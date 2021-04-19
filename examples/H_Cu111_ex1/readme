@@ -1,0 +1,3 @@
+In this example we calculate the partition function and thermophysical quantities of a hydrogen atom on a Cu(111) surface.
+DFT info: We used the Quantum ESPRESSO open-source code with the PBE-D3(ABC) functional
+MP-NN surrogate: trained with 14,934 geometries

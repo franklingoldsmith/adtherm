@@ -1,0 +1,19 @@
+#Name of file containing adsorbate coordinates
+name = 'H_ads'
+#Name of file containing surface atom coordinates
+surface = 'Cu111'
+composition = {'H':1, 'C':0, 'N':0, 'O':0}
+adsorbate_mass = [1.6735575e-27, 'kg']
+#z low and high are relative to COM z coordinate
+z_low = [-0.5, 'Angstrom']
+z_high = [4.25, 'Angstrom']
+#Currently the code assumes unit cell length and height are for a 3X3 unit cell, and a 111 surface
+uc_x = [7.764032457428293, 'Angstrom']
+uc_y = [6.723849343939824, 'Angstrom']
+#Global minimum z_position:
+z_globmin = [0.91696773, 'Angstrom']
+#Hessian matrix at the respective minimum in units of eV/Angstrom2
+Hessian = [[ 1.6849596,   0.00408805, -0.00514221];[ 0.00408805,  1.68520386,  0.05403173];[-0.00514221,  0.05403173,  3.08849911]; 'eV/Angstrom2']
+#Exponent - 2^exponent geometries will be generated
+exponent = 3
+method = 'gauss'
