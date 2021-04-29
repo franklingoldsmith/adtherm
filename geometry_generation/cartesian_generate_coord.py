@@ -28,11 +28,11 @@ def manipulate_ads(data, adsorbate, option):
                 matrix[i,:] = np.random.uniform(0, 1, size = N_values)
             elif i==3: #will need to fix for 6D when using hessian for that
                 #H respective minimum position
-                H_x = data.COM[0]
-                H_y = data.COM[1] 
-                H_z = data.COM[2] 
+                COM_x = data.COM[0]
+                COM_y = data.COM[1] 
+                COM_z = data.COM[2] 
 
-                gaussmean = np.array([H_x,H_y,H_z])
+                gaussmean = np.array([COM_x,COM_y,COM_z])
                 #Hessian matrix at minimum
                 hess = adsorbate.hessian
                 invhess = np.linalg.inv(hess)
@@ -44,18 +44,13 @@ def manipulate_ads(data, adsorbate, option):
 
     if option == 'sobol':
         matrix=np.zeros((6,N_values))
-        if adsorbate.N_atoms > 2:
-            sobolmatrix = i4_sobol_generate (6, N_values, 1) #for 6D - nonlinear adsorbate
-        if adsorbate.N_atoms == 2:
-            sobolmatrix = i4_sobol_generate (5, N_values, 1) #for 5D system
-        if adsorbate.N_atoms < 2:
+        if adsorbate.N_atoms > 1:
+            sobolmatrix = i4_sobol_generate (6, N_values, 1) #for 6D systems (nonlinear adsorbates) and 5D systems (linear adsorbates)
+        elif adsorbate.N_atoms == 1:
             sobolmatrix = i4_sobol_generate (3, N_values, 1)  #for 3D - atomic adsorbate
         for i in range(0,6):
            if len(sobolmatrix[0,:]) == 6:
                matrix[i,:]=sobolmatrix[:,i]
-           elif len(sobolmatrix[0,:]) == 5:
-               if i>0:
-                   matrix[i,:]=sobolmatrix[:,i-1]
            elif len(sobolmatrix[0,:]) == 3:
                if i>2:
                    matrix[i,:]=sobolmatrix[:,i-3]
