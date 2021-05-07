@@ -1,3 +1,7 @@
+<p align="center">
+  <img width="255" height="103.4366" src="AdTherm_logo.png">
+</p>
+
 # Adsorbate Thermochemistry | AdTherm
 
 AdTherm is a code that performs Monte Carlo phase space integration (MC-PSI) to calculate adsorbate partition functions that include anharmonicity, as well as anharmonic thermophysical quantities of adsorbates.
