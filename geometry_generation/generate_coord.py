@@ -23,61 +23,69 @@ def manipulate_ads(data, adsorbate, option):
     N_values = data.N_values
     if option == 'gauss':
         matrix=np.zeros((6,N_values))
-        for i in range(0, 6):
-            if i<3:
-                matrix[i,:] = np.random.uniform(0, 1, size = N_values)
-            elif i==3: #will need to fix for 6D when using hessian for that
-                #H respective minimum position
-                COM_x = data.COM[0]
-                COM_y = data.COM[1] 
-                COM_z = data.COM[2] 
+        COM_x = data.COM[0]
+        COM_y = data.COM[1]
+        COM_z = data.COM[2]  
+        if adsorbate.N_atoms > 2:
+            gaussmean = np.array([COM_x, COM_y, COM_z, 0.0, 0.0, 0.0])
+        elif adsorbate.N_atoms == 2:
+            gaussmean = np.array([COM_x, COM_y, COM_z, 0.0, 0.0])
+        else:
+            gaussmean = np.array([COM_x, COM_y, COM_z])
+        #The Hessian matrix at the minimum
+        hess = adsorbate.hessian
+        invhess = np.linalg.inv(hess)
+        gausscov = invhess.copy()
+        gaussmat = np.random.multivariate_normal(gaussmean, gausscov, size=N_values, check_valid='warn')
 
-                gaussmean = np.array([COM_x,COM_y,COM_z])
-                #Hessian matrix at minimum
-                hess = adsorbate.hessian
-                invhess = np.linalg.inv(hess)
-                gausscov = invhess.copy()
-                gaussmat = np.random.multivariate_normal(gaussmean, gausscov, size=N_values, check_valid='warn')
-                matrix[i,:]=gaussmat[:,i-3]
-            else:
-                matrix[i,:]=gaussmat[:,i-3]
+        for i in range(0, len(gaussmean)):
+                matrix[i,:] = gaussmat[:,i]
 
     if option == 'sobol':
+        print("N_atoms")
+        print(adsorbate.N_atoms)
         matrix=np.zeros((6,N_values))
-        if adsorbate.N_atoms > 1:
-            sobolmatrix = i4_sobol_generate (6, N_values, 1) #for 6D systems (nonlinear adsorbates) and 5D systems (linear adsorbates)
+        if adsorbate.N_atoms > 2:
+            sobolmatrix = i4_sobol_generate (6, N_values, 1) #for 6D systems (nonlinear adsorbates)
+        elif adsorbate.N_atoms == 2:
+            sobolmatrix = i4_sobol_generate (5, N_values, 1) #for 5D systems (linear adsorbates)
         elif adsorbate.N_atoms == 1:
-            sobolmatrix = i4_sobol_generate (3, N_values, 1)  #for 3D - atomic adsorbate
+            sobolmatrix = i4_sobol_generate (3, N_values, 1) #for 3D systems (atomic adsorbates)
         for i in range(0,6):
            if len(sobolmatrix[0,:]) == 6:
                matrix[i,:]=sobolmatrix[:,i]
+           elif len(sobolmatrix[0,:]) == 5:
+               if i<5:
+                   matrix[i,:]=sobolmatrix[:,i]
            elif len(sobolmatrix[0,:]) == 3:
-               if i>2:
-                   matrix[i,:]=sobolmatrix[:,i-3]
+               if i<3:
+                   matrix[i,:]=sobolmatrix[:,i]
     if option == 'random':
         matrix = np.zeros((6, N_values))
         for i in range(0, 6):
-            matrix[i,:] = np.random.uniform(0, 1, size = N_values)
+                matrix[i,:] = np.random.uniform(0, 1, size = N_values)
 
     data.matrix = matrix
-    data.alpha = matrix[0,:] *7.0/4.0 *np.pi - 3.0/4.0 *np.pi #rotate pi in each direction
-    data.beta = matrix[1,:] * 4.0/3.0 * np.pi - 2.0/3.0*np.pi
-    data.gamma = matrix[2,:]*2*np.pi
-    data.alpha[:] = 0.0
-    data.beta[:] = 0.0
-    data.gamma[:] = 0.0
 
     if option == 'random' or option == 'sobol':
-        data.dy = matrix[4,:]*adsorbate.uc_y/3.0
-        data.dx = matrix[3,:]*adsorbate.uc_x/3.0+data.dy*np.tan(30*np.pi/180)
-        #data.dx[:] = 0.0
-        #data.dy[:] = 0.0 
-        data.dz = matrix[5,:]*(data.z_high-data.z_low)+data.z_low
-        #data.dz[:] = 0.0 
+        data.dy = matrix[1,:]*adsorbate.uc_y/3.0
+        data.dx = matrix[0,:]*adsorbate.uc_x/3.0+data.dy*np.tan(30*np.pi/180)
+        data.dz = matrix[2,:]*(data.z_high-data.z_low)+data.z_low
+        data.alpha = matrix[3,:]*2.0*np.pi - np.pi #rotate pi in each direction around x-axis
+        data.beta = np.arccos(matrix[4,:]*2.0-1.0) - np.arccos(0.0) #rotate 1/2 pi in each direction around y axis
+        data.gamma = matrix[5,:]*2.0*np.pi - np.pi #rotate pi in each direction around x-axis
+        if adsorbate.N_atoms < 3:
+            data.gamma[:] = 0.0
+        if adsorbate.N_atoms == 1:
+            data.alpha[:] = 0.0
+            data.beta[:] = 0.0    
     elif option == 'gauss':
-        data.dx = matrix[3,:]
-        data.dy = matrix[4,:]
-        data.dz = matrix[5,:]
+        data.dx = matrix[0,:]
+        data.dy = matrix[1,:]
+        data.dz = matrix[2,:]
+        data.alpha = matrix[3,:]
+        data.beta = matrix[4,:]
+        data.gamma = matrix[5,:]
     return
 
 ##################################################
@@ -128,9 +136,12 @@ def main():
     ads = syst.Trajectory()
     syst.get_system_coordinates(ads, path + '/' + adsorbate.name + '.inp')
 
-    min_cutoff = .5 #don't allow adsorbate to be closer than 0.5 angstroms from the surface atoms
-    max_cutoff = 100.0 #change?
-    ads.rotate=False #For now
+    min_cutoff = 0.5 #don't allow less than a 0.5 angstrom separation between atom centers
+    max_cutoff = 100.0 
+    if adsorbate.N_atoms == 1:
+        ads.rotate=False 
+    else:
+        ads.rotate=True
     #print("Maximum Distance from Center of Mass: %.2F\t%.2F"%(0, ads.max_r))
 
     METHOD = adsorbate.method
@@ -150,12 +161,14 @@ def main():
     # Now cycle through each of the Sobol sequences
     job_index = []
     too_close_index= []
+    beta_outside_index = []
     number_valid = 0
     for i in range(0, N_values):
         #start generating the unique cartesian coordinates for the adsorbate
 
         job_name = 'POSCAR_'+str(i)
-        #syst.rotate_COM(ads,i)
+        if ads.rotate:
+            syst.euler_rotate_COM(ads,i)
         syst.translate(ads,i,i)
         valid = True
 
@@ -170,50 +183,48 @@ def main():
         
         #if minimum distance is too small
         min_dist,max_dist = syst.get_min_max_distance(surf, ads)
+        new_coord = get_coordmatrix(surf, ads)
         if min_dist < min_cutoff or max_dist>max_cutoff:
-
-            new_coord = get_coordmatrix(surf, ads)
             valid = False
             too_close_index.append(i)
         #or if coordinates are outside the rhombus boundaries (can happen in gaussian distribution case)
         elif ads.dz[i] > z_ub or ads.dz[i] < z_lb:
-            new_coord =  get_coordmatrix(surf,ads)
             valid = False
             print("coord dz = " + str(ads.dz[i]) + " outside rhombus")
             too_close_index.append(i)
-        elif ads.dy[i] > y_ub or ads.dy[i] < y_lb:
-            print("coord dy = " + str(ads.dy[i]) + " outside rhombus")
-            if ads.dy[i] > y_ub:
-                ads.dy[i] -= uc_y
-                ads.dx[i] -= uc_y*(1./np.sqrt(3))
-            elif ads.dy[i] < y_lb:
-                ads.dy[i] += uc_y
-                ads.dx[i] += uc_y*(1./np.sqrt(3))
-            print("new dy = "+ str(ads.dy[i]) + " and dx = " + str(ads.dx[i]))
-            x_ub = uc_x+ads.dy[i]*(1./np.sqrt(3))
-            x_lb = ads.dy[i]*(1./np.sqrt(3))
-            new_coord = get_coordmatrix(surf,ads)
-            new_coord[-1,0]=ads.dx[i]
-            new_coord[-1,1]=ads.dy[i]
-            
-        if valid==True and (ads.dx[i] > x_ub or ads.dx[i] < x_lb):
-            print("coord dx = " + str(ads.dx[i]) + " outside rhombus when dy = " + str(ads.dy[i]))
-            if ads.dx[i] > x_ub:
-                ads.dx[i] -= uc_x
-            elif ads.dx[i] < x_lb:
-                ads.dx[i] += uc_x
-            print("new dx = " + str(ads.dx[i]))
-            new_coord =  get_coordmatrix(surf,ads)
-            new_coord[-1,0]=ads.dx[i]
-            new_coord[-1,1]=ads.dy[i]
-        elif valid==True:
-            new_coord =  get_coordmatrix(surf,ads)
-            new_coord[-1,0]=ads.dx[i]
-            new_coord[-1,1]=ads.dy[i]
-            job_index.append(i)
+        elif ads.beta[i] > 0.5*np.pi or ads.beta[i] < -0.5*np.pi:
+            valid = False
+            print("coord beta = " + str(ads.beta[i]) + " outside allowed range")
+            beta_outside_index.append(i)
 
+        if valid==True:
+            while ads.dy[i] > y_ub or ads.dy[i] < y_lb:
+                print("coord dy = " + str(ads.dy[i]) + " outside rhombus")
+                if ads.dy[i] > y_ub:
+                    ads.dy[i] -= uc_y
+                    ads.dx[i] -= uc_y*(1./np.sqrt(3))
+                    new_coord[-adsorbate.N_atoms:,0] -= uc_y*(1./np.sqrt(3))
+                    new_coord[-adsorbate.N_atoms:,1] -= uc_y
+                elif ads.dy[i] < y_lb:
+                    ads.dy[i] += uc_y
+                    ads.dx[i] += uc_y*(1./np.sqrt(3))
+                    new_coord[-adsorbate.N_atoms:,0] += uc_y*(1./np.sqrt(3))
+                    new_coord[-adsorbate.N_atoms:,1] += uc_y
+                print("new dy = "+ str(ads.dy[i]) + " and dx = " + str(ads.dx[i]))
+                x_ub = uc_x+ads.dy[i]*(1./np.sqrt(3))
+                x_lb = ads.dy[i]*(1./np.sqrt(3))
 
-        paramline = "%d\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\n"%(i, ads.dz[i], ads.dx[i], ads.dy[i],  ads.alpha[i], ads.beta[i], ads.gamma[i])
+            while (ads.dx[i] > x_ub or ads.dx[i] < x_lb):
+                print("coord dx = " + str(ads.dx[i]) + " outside rhombus when dy = " + str(ads.dy[i]))
+                if ads.dx[i] > x_ub:
+                    ads.dx[i] -= uc_x
+                    new_coord[-adsorbate.N_atoms:,0] -= uc_x
+                elif ads.dx[i] < x_lb:
+                    ads.dx[i] += uc_x
+                    new_coord[-adsorbate.N_atoms:,0] += uc_x
+                print("new dx = " + str(ads.dx[i]))
+
+        paramline = "%d\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\n"%(i, ads.dx[i], ads.dy[i], ads.dz[i],  ads.alpha[i], ads.beta[i], ads.gamma[i])
         if valid == True: 
             ref.write(paramline)
             number_valid +=1 
@@ -222,7 +233,9 @@ def main():
         file_lines = create_DFT_input(POSCAR_template,job_name,new_coord)
 
         if valid == False:
-            job_name = "too_close/" + job_name
+            if not os.path.exists("eliminated/"):
+                os.makedirs("eliminated/")
+            job_name = "eliminated/" + job_name
 
         new_file = open(job_name, 'w')
         for line in file_lines:
@@ -230,8 +243,9 @@ def main():
         new_file.close()
 
     ref.close()
-    os.chdir("too_close/")
-    print("Generating %d geometries done, total geometries manipulated because of too close min_distance:%d"%(N_values, len(too_close_index)))
+    print("Generating %d geometries done"%(N_values))
+    print("Total geometries eliminated because of too close min_distance or z outside allowed range: %d"%(len(too_close_index)))
+    print("Total geometries eliminated because beta was outside the allowed range: %d"%(len(beta_outside_index)))
     print("The number of valid points is: " + str(number_valid)) 
 
 #######################################################################################################
