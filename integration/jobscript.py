@@ -7,8 +7,6 @@ import os, sys
 import time
 
 path = os.getcwd()
-#sys.path.append('path' + "',")
-#sys.path.insert(1, 'path')
 print(sys.path)
 import integration as integ
 
@@ -32,18 +30,25 @@ syst.get_system_coordinates(surf, path+'/' + adsorbate.surface + '.inp', transla
 ads = syst.Trajectory()
 syst.get_system_coordinates(ads, path + '/' + adsorbate.name + '.inp')
 
-ads.rotate=False #Rotation are not enabled at this time, but are to be added soon
+if ads.N_atoms == 1:
+    ads.rotate=False
+    ads.gamma_boundaries = [0,0]
+    ads.alpha_boundaries = [0,0]
+    ads.beta_boundaries = [0,0]
+else:
+    ads.rotate=True
+    ads.gamma_boundaries = [-np.pi,np.pi]
+    ads.alpha_boundaries = [-np.pi,np.pi]
+    ads.beta_boundaries = [-0.5*np.pi, 0.5*np.pi]
+    if ads.N_atoms == 2:
+        ads.gamma_boundaries = [0,0]
 
 METHOD = 'random'
 #z direction range (relative to COM z coordinate at optimized position on surface)
 ads.z_low = adsorbate.z_low+ads.COM[2]
 ads.z_high = adsorbate.z_high+ads.COM[2]
 
-#Boundaries for each d.o.f. here (currently assumes a 3x3 unit cell, 111 facet)
-#ADD ROTATIONAL BOUNDARIES HERE 
-ads.gamma_boundaries = [0,0]
-ads.alpha_boundaries = [0,0]
-ads.beta_boundaries = [0,0]
+#Boundaries for each translational d.o.f. here (currently assumes a 3x3 unit cell, 111 facet)
 ads.x_boundaries = [0.0,adsorbate.uc_x/3.0]
 ads.y_boundaries = [0.0,adsorbate.uc_y/3.0]
 ads.z_boundaries = [ads.z_low,ads.z_high]
@@ -68,51 +73,42 @@ f.close()
 
 MC_array=(adsorbate.q_MC) 
 
-PG_3D_corr_array = []
+PG_corr_array = []
 Analytical_array_2Dgas = []
 q_quantum = []
 q_class = []
 e_quantum = []
 e_class = []
-e_quantum_3vals = []
+e_quantum_vals = []
 square_e_quantum = []
 square_e_class = []
-e_class_3vals = []
+e_class_vals = []
 e_squared_quantum_array = []
 e_squared_classical_array = []
 
 for i, Temp in enumerate(T_array): 
-    PG_3D_corr_array.append(integ.PG_corr_3D(adsorbate,Temp))
+    PG_corr_array.append(integ.PG_corr(adsorbate,Temp))
     Analytical_array_2Dgas.append(integ.q_2Dgas_zHO(adsorbate,Temp,ads)) 
     q_quantum.append(np.prod(integ.PG_transfer_direct(adsorbate, Temp)[0]))
     q_class.append(np.prod(integ.PG_transfer_direct(adsorbate,Temp)[1]))
     e_quantum.append(integ.PG_transfer_direct(adsorbate,Temp)[2])
     e_class.append(integ.PG_transfer_direct(adsorbate,Temp)[3])
-    e_quantum_3vals.append(integ.PG_transfer_direct(adsorbate,Temp)[4])
-    e_class_3vals.append(integ.PG_transfer_direct(adsorbate,Temp)[5])
-    square_e_quantum.append(np.sum(e_quantum_3vals[-1]**2.0))
-    square_e_class.append(np.sum(e_class_3vals[-1]**2.0))
+    e_quantum_vals.append(integ.PG_transfer_direct(adsorbate,Temp)[4])
+    e_class_vals.append(integ.PG_transfer_direct(adsorbate,Temp)[5])
+    square_e_quantum.append(np.sum(e_quantum_vals[-1]**2.0))
+    square_e_class.append(np.sum(e_class_vals[-1]**2.0))
     e_squared_quantum_array.append(integ.PG_squared_direct(adsorbate,Temp)[0])
     e_squared_classical_array.append(integ.PG_squared_direct(adsorbate,Temp)[1])
 
-PG_3D_corr_array = np.array(PG_3D_corr_array)
+PG_corr_array = np.array(PG_corr_array)
 Analytical_array_2Dgas = np.array(Analytical_array_2Dgas)
 e_quantum = np.array(e_quantum)
 q_quantum=np.array(q_quantum) 
 e_class = np.array(e_class)
-e_quantum_3vals = np.array(e_quantum_3vals)
-e_class_3vals = np.array(e_class_3vals)
+e_quantum_vals = np.array(e_quantum_vals)
+e_class_vals = np.array(e_class_vals)
 e_squared_quantum_array = np.array(e_squared_quantum_array)
 e_squared_classical_array = np.array(e_squared_classical_array)
-
-int_E_class = 3.0/2.0 + e_class
-int_E_array = (adsorbate.I1 + 3.0/2.0 + e_quantum - int_E_class)
-
-Cp_array_quantum = e_squared_quantum_array - square_e_quantum
-Cp_array_classical = 3.0/2.0 + e_squared_classical_array - square_e_class
-Cp_array = (3.0/2.0 + adsorbate.I2 - adsorbate.I1**2.0) + Cp_array_quantum - Cp_array_classical
-
-S_array = int_E_array+np.array(np.log(MC_array*PG_3D_corr_array))
 
 E_min = np.amin(adsorbate.potential_array)
 E_max = np.amax(adsorbate.potential_array) 
@@ -125,12 +121,55 @@ f = open("output.txt", "a")
 f.write("The minimum potential energy is " + str(E_min*kJ/1e3) + "eV at dz = " + str(z_eq) + "\n")
 f.write("The maximum potential energy is " + str(E_max*kJ/1e3) + " eV. \n")
 
-f.write("Pitzer-Gwinn 3D quantum correction array (including ZPE shift): \n")
-f.write(str(PG_3D_corr_array))
-f.write("\nMC-PSI Q (without quantum correction and ZPE shift): \n")
-f.write(str(MC_array))
-f.write("\n3D Harmonic oscillator Q: \n")
-f.write(str(q_quantum))
+if ads.N_atoms == 1:
+    int_E_class = 3.0/2.0 + e_class
+    int_E_array = (adsorbate.I1 + 3.0/2.0 + e_quantum - int_E_class)
+
+    Cp_array_quantum = e_squared_quantum_array - square_e_quantum
+    Cp_array_classical = 3.0/2.0 + e_squared_classical_array - square_e_class
+    Cp_array = (3.0/2.0 + adsorbate.I2 - adsorbate.I1**2.0) + Cp_array_quantum - Cp_array_classical
+
+    S_array = int_E_array+np.array(np.log(MC_array*PG_corr_array))
+
+    f.write("Pitzer-Gwinn 3D quantum correction array (including ZPE shift): \n")
+    f.write(str(PG_corr_array))
+    f.write("\nMC-PSI Q (without quantum correction and ZPE shift): \n")
+    f.write(str(MC_array))
+    f.write("\n3D Harmonic oscillator Q: \n")
+    f.write(str(q_quantum))
+elif ads.N_atoms == 2:
+    int_E_class = 5.0/2.0 + e_class
+    int_E_array = (adsorbate.I1 + 5.0/2.0 + e_quantum - int_E_class)
+
+    Cp_array_quantum = e_squared_quantum_array - square_e_quantum
+    Cp_array_classical = 5.0/2.0 + e_squared_classical_array - square_e_class
+    Cp_array = (5.0/2.0 + adsorbate.I2 - adsorbate.I1**2.0) + Cp_array_quantum - Cp_array_classical
+
+    S_array = int_E_array+np.array(np.log(MC_array*PG_corr_array))
+
+    f.write("Pitzer-Gwinn 5D quantum correction array (including ZPE shift): \n")
+    f.write(str(PG_corr_array))
+    f.write("\nMC-PSI Q (without quantum correction and ZPE shift): \n")
+    f.write(str(MC_array))
+    f.write("\n5D Harmonic oscillator Q: \n")
+    f.write(str(q_quantum))
+elif ads.N_atoms > 2:
+    int_E_class = 6.0/2.0 + e_class
+    int_E_array = (adsorbate.I1 + 6.0/2.0 + e_quantum - int_E_class)
+
+    Cp_array_quantum = e_squared_quantum_array - square_e_quantum
+    Cp_array_classical = 6.0/2.0 + e_squared_classical_array - square_e_class
+    Cp_array = (6.0/2.0 + adsorbate.I2 - adsorbate.I1**2.0) + Cp_array_quantum - Cp_array_classical
+
+    S_array = int_E_array+np.array(np.log(MC_array*PG_corr_array))
+
+    f.write("Pitzer-Gwinn 6D quantum correction array (including ZPE shift): \n")
+    f.write(str(PG_corr_array))
+    f.write("\nMC-PSI Q (without quantum correction and ZPE shift): \n")
+    f.write(str(MC_array))
+    f.write("\n6D Harmonic oscillator Q: \n")
+    f.write(str(q_quantum))
+
 f.write("\nFree translator Q: \n")
 f.write(str(Analytical_array_2Dgas))
 f.write("\ndH/RT: \n")
