@@ -60,10 +60,41 @@ def manipulate_ads(data, adsorbate, option):
            elif len(sobolmatrix[0,:]) == 3:
                if i<3:
                    matrix[i,:]=sobolmatrix[:,i]
+
     if option == 'random':
         matrix = np.zeros((6, N_values))
         for i in range(0, 6):
                 matrix[i,:] = np.random.uniform(0, 1, size = N_values)
+
+    if option == 'hessian':
+        matrix=np.zeros((6,N_values))
+        count=0
+        dh = 0.01 #0.01 #angstrom displacement
+        if data.N_atoms == 1:
+            ndim = 3
+        elif data.N_atoms == 2:
+            ndim = 5
+        else:
+            ndim = 6
+        print(ndim)
+        for i in range(ndim):
+            for j in range(ndim):
+                if i>j:
+                    continue
+                if i==j:
+                    for disp in [-2,-1,1,2]: #because 4 displacements per matrix element
+                        displacement=[0,0,0,0,0,0]
+                        displacement[i] = disp*dh 
+                        matrix[:,count] = displacement #dx, dy, dz, alpha, beta, gamma
+                        count += 1
+                elif i<j:
+                    for dispi in [-1,1]:
+                        displacement=[0,0,0,0,0,0]
+                        displacement[i]=dispi*dh
+                        for dispj in [-1,1]:
+                            displacement[j]=dispj*dh
+                            matrix[:,count] = displacement[:]
+                            count += 1
 
     data.matrix = matrix
 
@@ -86,6 +117,28 @@ def manipulate_ads(data, adsorbate, option):
         data.alpha = matrix[3,:]
         data.beta = matrix[4,:]
         data.gamma = matrix[5,:]
+    elif option == 'hessian':
+        COM_x = data.COM[0]
+        COM_y = data.COM[1]
+        COM_z = data.COM[2]
+
+        data.dx = matrix[0,:] + data.COM[0]
+        data.dy = matrix[1,:] + data.COM[1]
+        data.dz = matrix[2,:] + data.COM[2]
+        max_r = data.max_r
+        print("this is max r")
+        print(max_r)
+        print("this is the COM")
+        print(data.COM)
+        data.alpha = matrix[3,:]/max_r #arc length converted to radians
+        data.beta = matrix[4,:]/max_r
+        data.gamma = matrix[5,:]/max_r
+        if data.N_atoms == 1:
+            data.alpha[:] = 0.0
+            data.beta[:] = 0.0
+            data.gamma[:] = 0.0
+        elif data.N_atoms == 2:
+            data.gamma[:] = 0.0
     return
 
 ##################################################
@@ -148,9 +201,17 @@ def main():
     N_values = 0
     ads.z_low = adsorbate.z_low+adsorbate.z_globmin
     ads.z_high = adsorbate.z_high+adsorbate.z_globmin
-    #the base-2 exponent to determine the number of geometries
-    N_values = 2**adsorbate.exponent
+    if METHOD == 'hessian':
+        N_values = 84
+        if adsorbate.N_atoms == 1:
+            N_values = 24
+        elif adsorbate.N_atoms == 2:
+            N_values = 60
+    else:
+        #use the base-2 exponent to determine the number of geometries
+        N_values = 2**adsorbate.exponen
     ads.N_values = N_values
+
     print(str(N_values) + " geometries will be generated using method "+ METHOD +" with sampling "+str(N_values))
 
     ref = open('coord_list.dat','w')
