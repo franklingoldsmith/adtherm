@@ -209,7 +209,7 @@ def main():
             N_values = 60
     else:
         #use the base-2 exponent to determine the number of geometries
-        N_values = 2**adsorbate.exponen
+        N_values = 2**adsorbate.exponent
     ads.N_values = N_values
 
     print(str(N_values) + " geometries will be generated using method "+ METHOD +" with sampling "+str(N_values))
