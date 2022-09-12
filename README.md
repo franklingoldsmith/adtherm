@@ -54,7 +54,7 @@ Please post any issues to the [issues page](https://github.com/franklingoldsmith
 Please let us know if you intend to use AdTherm or have any questions about it (feel free to send an email to katrin_blondal@brown.edu or franklin_goldsmith@brown.edu).
 
 ## Credits
- - [ECC project](https://ecc-project.sandia.gov/)
+ - [ECC project](https://www.ecc-project.org/)
  - [Goldsmith group](https://www.brown.edu/Departments/Engineering/Labs/Goldsmith/index.html)
  - The approach taken in this project is inspired by a project of another student in the Goldsmith group, Dr. Xi Chen, who has now graduated: Generating rate constants for barrierless gas-phase reactions with VRC-TST using [rotd_py](https://bitbucket.org/xi_chen_1/rotd_python/src/master/)
 
