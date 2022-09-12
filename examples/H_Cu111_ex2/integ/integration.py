@@ -76,7 +76,7 @@ def q_2Dgas_zHO(adsorbate,T,ads):
     q_2Dgas = q_2D*q_z_quantum
     return q_2Dgas
 
-def PG_corr_3D(adsorbate,T):
+def PG_corr(adsorbate,T):
     '''Returns the harmonic Pitzer-Gwinn corrected that is the multiplicative quantum correction (including ZPE shift)
     for the classical PSI partition function.'''
     kB = adsorbate.kB

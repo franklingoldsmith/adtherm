@@ -1,0 +1,20 @@
+#Name of file containing adsorbate coordinates
+name = 'CO_ads'
+#Name of file containing surface atom coordinates
+surface = 'Pt111'
+composition = {'H':0, 'C':1, 'N':0, 'O':1}
+adsorbate_mass = [4.6511705e-26, 'kg']
+#z low and high are relative to COM z coordinate
+z_low = [-0.5, 'Angstrom']
+z_high = [3.5, 'Angstrom']
+#Currently the code assumes unit cell length and height are for a 3X3 unit cell, and a 111 surface
+uc_x = [8.35800215362499, 'Angstrom']
+uc_y = [7.238242189924291, 'Angstrom']
+#Global minimum z_position:
+z_globmin = [2.049088, 'Angstrom']
+#Hessian matrix at the respective minimum in units of eV/Angstrom2
+Hessian = [[ 1.12589085e+00,  2.38098437e-03, -3.50346090e-02, -9.59924364e-08,   1.90338641e+00]; [ 2.38098437e-03,  1.11636662e+00,  3.40136467e-03, -1.90069392e+00,   1.79515455e-03]; [-3.50346090e-02,  3.40136467e-03,  2.23982771e+01,  4.48764640e-04,  -1.34619793e-03]; [-9.59924364e-08, -1.90069392e+00,  4.48764640e-04,  4.33999084e+00,  -7.40106258e-04]; [ 1.90338641e+00,  1.79515455e-03, -1.34619793e-03, -7.40106258e-04,   4.34433263e+00]; 'eV/Angstrom2']
+#Exponent - 2^exponent geometries will be generated
+exponent = 8
+#Distribution - currently 'sobol', 'random', and 'gauss' are working
+method = 'gauss'

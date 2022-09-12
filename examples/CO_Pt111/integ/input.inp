@@ -1,0 +1,23 @@
+#Name of file containing adsorbate coordinates
+name = 'CO_ads'
+#Name of file containing surface atom coordinates
+surface = 'Pt111'
+composition = {'H':0, 'C':1, 'N':0, 'O':1}
+adsorbate_mass = [4.651170514136170E-26, 'kg']
+#surrogate freq (fcc) with NITROGEN program
+frequencies = [148.383, 149.048, 293.030, 293.640, 343.169, 'cm-1']
+#Principal moments of inertia 
+inertias = [9.74352529, 'amu*Angstrom2']
+#z low and high are relative to COM z coordinate
+z_low = [-0.5, 'Angstrom']
+z_high = [1.450912, 'Angstrom']
+#Currently the code assumes unit cell length and height are for a 3X3 unit cell, and a 111 surface
+uc_x = [8.35800215362499, 'Angstrom']
+uc_y = [7.238242189924291, 'Angstrom']
+max_r = [0.680986, 'Angstrom']
+#Temperature range of interest
+T_low = [290, 'K']
+T_high = [1400, 'K']
+dT = [37, 'K']
+#Desired accuracy of Q with respect to the convergence parameter c
+Q_acc = 1e-2

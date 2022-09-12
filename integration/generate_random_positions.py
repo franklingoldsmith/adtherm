@@ -16,7 +16,7 @@ def manipulate_ads(data, option):
     data.matrix = matrix
     data.alpha = matrix[0,:]*(data.alpha_boundaries[1]-data.alpha_boundaries[0]) - (- data.alpha_boundaries[0])
     data.beta = matrix[1,:] * (data.beta_boundaries[1] - data.beta_boundaries[0]) - (- data.beta_boundaries[0])
-    data.gamma = matrix[2,:]*2*np.pi  
+    data.gamma = matrix[2,:] * (data.gamma_boundaries[1] - data.gamma_boundaries[0]) - (- data.gamma_boundaries[0])
     data.dx = matrix[3,:]*(data.x_boundaries[1]-data.x_boundaries[0])-(-data.x_boundaries[0])
     data.dy = matrix[4,:]*(data.y_boundaries[1]-data.y_boundaries[0])-(-data.y_boundaries[0])
     data.dz = matrix[5,:]*(data.z_boundaries[1]-data.z_boundaries[0])-(-data.z_boundaries[0])

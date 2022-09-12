@@ -115,12 +115,96 @@ def get_system_coordinates(data, filename, translate=True):
     if translate:
         get_center_of_mass(data)
         get_max_distance(data)
+        if data.N_atoms > 1:
+            get_map_matrix(data)
     return
 
 #========================================================================================
-# rotation about center of mass
+# Get map matrix to transform x,y,z coordinates to principal axes coordinates
 #========================================================================================
-#To be added soon
+#From ASE inertia module
+def get_map_matrix(data):
+    # Initialize elements of the inertial tensor
+    I11 = I22 = I33 = I12 = I13 = I23 = 0.0
+    for n in range(data.N_atoms):
+        #print(data.N_atoms)
+        #print(data.COM_coordinates.copy())
+        x, y, z = data.COM_coordinates.copy()[n]
+        #print(x,y,z)
+        m = data.mass[n]
+
+        I11 += m * (y ** 2 + z ** 2)
+        I22 += m * (x ** 2 + z ** 2)
+        I33 += m * (x ** 2 + y ** 2)
+        I12 += -m * x * y
+        I13 += -m * x * z
+        I23 += -m * y * z
+
+    I = np.array([[I11, I12, I13],
+                  [I12, I22, I23],
+                  [I13, I23, I33]])
+
+    print(I)
+
+    evals, evecs = np.linalg.eigh(I) #eigenvectors are the column arrays
+    #print(evecs)
+    map_matrix = np.zeros((3,3))
+    for num in range(len(evals)):
+        evec = evecs[:,num]
+        if np.abs(evec[0]) > np.abs(evec[1]) and np.abs(evec[0])> np.abs(evec[2]):
+            map_matrix[0,:] = evec[:]
+        elif np.abs(evec[1]) > np.abs(evec[0]) and np.abs(evec[1]) > np.abs(evec[2]):
+            map_matrix[1,:] = evec[:]
+        else:
+            map_matrix[2,:] = evec[:]
+    data.map_matrix = map_matrix
+
+#========================================================================================
+# Euler rotation about center of mass
+# =======================================================================================
+def euler_rotate_COM(data, i):
+    """ The coordinates of the rotate according to the ith row of matrix. Here the ZYX Euler convention is used."""
+    N_atoms = data.N_atoms
+    rotated_COM_coordinates = data.COM_coordinates.copy()
+    #print(rotated_COM_coordinates)
+
+    mapped_coords = []
+    for coord in rotated_COM_coordinates:
+        mapped_coord = np.dot(data.map_matrix,coord)
+        mapped_coords.append(mapped_coord)
+
+    alpha = data.alpha[i]
+    beta = data.beta[i]
+    gamma = data.gamma[i]
+
+    psi = gamma #rotation about z
+    theta = beta #rotation about y
+    phi = alpha #rotation about x (naming consistent with rotation sampling paper)
+    #From the ASE source code
+    # First move the molecule to the origin In contrast to MATLAB,
+    # numpy broadcasts the smaller array to the larger row-wise,
+    # so there is no need to play with the Kronecker product.
+    # First Euler rotation about z in matrix form
+    D = np.array(((np.cos(psi), -np.sin(psi), 0.),
+                  (np.sin(psi), np.cos(psi), 0.),
+                  (0., 0., 1.)))
+    #Second Euler rotation about y
+    C = np.array(((np.cos(theta), 0., np.sin(theta)),
+                  (0., 1., 0.),
+                  (-np.sin(theta), 0., np.cos(theta))))
+    # Third Euler rotation about x:
+    B = np.array(((1., 0., 0.),
+                  (0., np.cos(phi), -np.sin(phi)),
+                  (0., np.sin(phi), np.cos(phi))))
+    # Total Euler rotation
+    A = np.dot(np.dot(D,C), B)
+    # Do the rotation
+    rotated_mapped_coordinates = np.dot(A, np.transpose(mapped_coords))
+    #convert back
+    rotated_COM_coordinates = np.dot(data.map_matrix.transpose(),rotated_mapped_coordinates)#use transpose of map matrix to transform back
+    #rotated_COM_coordinates = np.dot(A, np.transpose(rotated_COM_coordinates))
+    data.rotated_COM_coordinates = np.transpose(rotated_COM_coordinates)
+    return
 
 #========================================================================================
 # translation

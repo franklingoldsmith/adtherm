@@ -1,0 +1,18 @@
+#Name of file containing adsorbate coordinates
+name = 'CH3OH_ads'
+#Name of file containing surface atom coordinates
+surface = 'Cu111'
+composition = {'H':4, 'C':1, 'N':0, 'O':1}
+adsorbate_mass = [5.320593514E-26, 'kg']
+#z low and high are relative to COM z coordinate
+z_low = [-1.25, 'Angstrom']
+z_high = [5.0, 'Angstrom']
+#Currently the code assumes unit cell length and height are for a 3X3 unit cell, and a 111 surface
+uc_x = [7.59432682994352, 'Angstrom']
+uc_y = [6.57687995937283, 'Angstrom']
+#Global minimum z_position:
+z_globmin = [2.701504, 'Angstrom']
+#Exponent - 2^exponent geometries will be generated
+exponent = 5 
+#Distribution - currently 'sobol', 'random', and 'gauss' are working
+method = 'sobol'
