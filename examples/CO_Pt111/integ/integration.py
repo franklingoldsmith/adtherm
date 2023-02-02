@@ -237,7 +237,7 @@ def q_MCsampling(adsorbate, surf, ads, METHOD, T_array):
     print(trans_kinetic_factor/(h**3.0)*1e-30)
     print(rot_kinetic_factor)
     f = open("output.txt", "a")
-    f.write("Partition function covergence: " + str(conv_param) + "\n")
+    f.write("Partition function convergence: " + str(conv_param) + "\n")
     f.write("Integration points: " + str(points_needed) + "\n")
     f.write("Points thrown away:" + str(points_not_valid) + "\n")
     f.close()

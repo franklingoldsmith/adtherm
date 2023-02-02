@@ -15,4 +15,4 @@ z_globmin = [2.701504, 'Angstrom']
 #Exponent - 2^exponent geometries will be generated
 #exponent = 7
 #Distribution - options are 'sobol', 'random', 'gauss' and 'hessian'
-method = 'hessian
+method = 'hessian'

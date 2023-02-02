@@ -24,7 +24,7 @@ for i in range(ndim):
             continue
         elif i==j:
             for disp in range(4): #because there are 4 displacements per matrix element
-                syst = read('fcc_Hessian_set_60.traj', index=count)
+                syst = read('atop_Hessian_set_84.traj', index=count)
                 add.append(syst.get_potential_energy())
                 count +=1
             if i<3:
@@ -33,7 +33,7 @@ for i in range(ndim):
                 element = (-add[3]+16.0*add[2]-30.0*origin_energy+16.0*add[1]-add[0])/(12.0*dh_angle**2.0)
         elif i<j:
             for disp in range(4):
-                syst = read('fcc_Hessian_set_60.traj', index=count)
+                syst = read('atop_Hessian_set_84.traj', index=count)
                 add.append(syst.get_potential_energy())
                 count +=1
             if i<3 and j<3:
