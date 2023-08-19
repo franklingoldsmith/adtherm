@@ -5,6 +5,9 @@ import numpy as np
 import sobol_seq
 from sobol_seq import i4_sobol, i4_sobol_generate
 import numpy.linalg as LA
+import copy
+from ase.io import read, write
+from ase.io.trajectory import Trajectory
 #########################
 
 
@@ -26,7 +29,7 @@ class AdTherm:
         self.z_high=z_above+np.min(self.adsorbate.positions[:,2])
         self.min_cutoff = 0.5
         self.max_cutoff = 100.0
-        self.hessian_displacement_size = 1e-2
+        self.hessian_displacement_size = 0.1
         if self.N_atoms_in_adsorbate == 1:
             self.rotate = False 
         else:
@@ -64,7 +67,8 @@ class AdTherm:
             else:
                 gaussmean = np.array([COM_x, COM_y, COM_z])
             hess = self.rigid_body_hessian
-            invhess = np.linalg.inv(hess)
+#            print(LA.eigh(hess))
+            invhess = LA.inv(hess)
             gausscov = invhess.copy()
             gaussmat = np.random.multivariate_normal(gaussmean, gausscov, size=N_values, check_valid='warn')
             for i in range(0, len(gaussmean)):
@@ -144,24 +148,26 @@ class AdTherm:
             elif self.N_atoms_in_adsorbate == 2:
                 gamma[:] = 0.
         coord=np.transpose(np.asarray([dx,dy,dz,alpha,beta,gamma]))
-        print(np.shape(coord))
         return coord
 
     def check_coord(self,coord):
-    
+        
+        traj = Trajectory('coord.traj', 'w')
         ref = open('coord_list.dat','w')
         ref_eliminated = open('invalid_coord_list.dat','w')
         dft_jobs = []
         number_valid = 0
         number_invalid = 0
+        conv = 180 / np.pi
         for i in range(0, len(coord)):
             atoms=self.atoms.copy()
             adsorbate=self.adsorbate.copy()
             if self.rotate:
-                adsorbate.euler_rotate(coord[i,3],coord[i,4],coord[i,5], center=self.adsorbate_center_of_mass)
-            adsorbate.translate(coord[i,0:3])
+                adsorbate.euler_rotate(conv * coord[i,3], conv * coord[i,4],
+                        conv * coord[i,5], center=self.adsorbate_center_of_mass)
+            adsorbate.translate(coord[i,0:3]-self.adsorbate_center_of_mass)
             valid = True
-            atoms[self.indices].positions=adsorbate.positions
+            atoms.positions[self.indices]=adsorbate.positions
             new_coord = atoms.positions
 
             uc_x = self.uc_x/3.0
@@ -173,7 +179,7 @@ class AdTherm:
             z_ub = self.z_high
             z_lb = self.z_low
         
-            min_dist,max_dist = self.get_min_max_distance(new_coord) ## Gotta think about this one
+            min_dist,max_dist = self.get_min_max_distance(new_coord)
             if min_dist < self.min_cutoff or max_dist>self.max_cutoff:
                 valid = False
             elif coord[i,2] > z_ub or coord[i,2] < z_lb:
@@ -207,7 +213,9 @@ class AdTherm:
             paramline = "%d\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\n"%(i, coord[i,0], coord[i,1], coord[i,2],  coord[i,3], coord[i,4], coord[i,5])
             if valid == True: 
                 ref.write(paramline)
-                number_valid +=1 
+                number_valid +=1
+                atoms.calc=self.atoms.calc
+                traj.write(atoms)
                 dft_jobs.append(atoms)
 
 
@@ -221,9 +229,9 @@ class AdTherm:
         print("Generating %d geometries done"%(len(coord)))
         print("The number of invalid points is:" + str(number_invalid))
         print("The number of valid points is: " + str(number_valid))
+        return dft_jobs
 
-    def calculate_rigid_body_hessian(self, displacement_forces):
-
+    def calculate_rigid_hessian(self, displacement_list, force_list):
         dh = self.hessian_displacement_size
         if len(self.indices) > 2:
             ndim = 6
@@ -231,21 +239,44 @@ class AdTherm:
             ndim = 5
         if len(self.indices) ==1:
             ndim = 3
-        hessian=np.zeros((ndim,ndim))
-        f=displacement_forces
+        hessian = np.zeros((ndim,ndim))
+        f = force_list
+        x = displacement_list
+        df = np.zeros([ndim,ndim])
+        dx = np.zeros([3*len(self.indices),ndim])
+        dx_norm=np.zeros(ndim)
         for i in range(ndim):
-            hessian[:,i]=(1/(2*dh))*(f[2*i+1]-f[2*i])      
+            dx[:,i]=(x[:,2*i]-x[:,2*i+1])
+            dx_norm[i] = LA.norm(np.copy(dx[:,i]))
+            dx[:,i]*=(1/dx_norm[i])
+        f_proj=np.transpose(np.matmul(np.transpose(dx),f))
+        for i in range(ndim):
+            df[i,:]=(1/dx_norm[i]) * (f_proj[2*i+1,:]-f_proj[2*i,:])
+
+        H = df
+        for i in range(ndim):
+            for j in range(ndim):
+                if i > j:
+                    H[j, i] = H[i, j]
+        return H
+
 
     def run(self):
-        hessian_job_list=self.coord_generate('hessian', self.N_hessian)
-        checked_hessian_job_list=self.check_coord(hessian_job_list)
-        displacement_forces=np.zeros([self.indic  #stopped here
-		for img in checked_hessian_job_list:
-			img.get_forces()
-#        H=calculate_H(H_list)
-#        np.savetxt(H,'Rigid_H.txt')
+        coord_list=self.coord_generate('hessian', self.N_hessian)
+        dft_list=self.check_coord(coord_list)
+        force_list=np.zeros([3*len(self.indices),self.N_hessian])
+        displacement_list=np.zeros([3*len(self.indices),self.N_hessian])
+        for i, img in enumerate(dft_list):
+            f_atoms=img.get_forces()[self.indices]
+            force_list[:,i]=f_atoms.flat
+            disp_atoms=img.positions[self.indices]
+            displacement_list[:,i]=disp_atoms.flat
+        self.rigid_body_hessian = self.calculate_rigid_hessian(displacement_list,force_list)
+        np.savetxt('rigid_hessian.out', self.rigid_body_hessian)
+        print(LA.eig(self.rigid_body_hessian))
+        coord_list=self.coord_generate('gauss', self.N_gauss)
+        dft_list=self.check_coord(coord_list)
 
-#        gauss_list=geometry_generate('gauss',hessian=H)
 
 
 
