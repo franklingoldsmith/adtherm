@@ -29,16 +29,17 @@ class AdTherm:
         self.z_high=z_above+np.min(self.adsorbate.positions[:,2])
         self.min_cutoff = 0.5
         self.max_cutoff = 100.0
-        self.hessian_displacement_size = 0.1
-        if self.N_atoms_in_adsorbate == 1:
-            self.rotate = False 
-        else:
-            self.rotate = True
+        self.hessian_displacement_size = 1e-2
+        self.rotate = True
         self.N_hessian = 12
-        if self.N_atoms_in_adsorbate == 1:
+        self.ndim = 6
+        if self.N_atoms_in_adsorbate == 2:
             self.N_hessian = 10
-        elif self.N_atoms_in_adsorbate == 2:
+            self.ndim = 5
+        elif self.N_atoms_in_adsorbate == 1:
             self.N_hessian = 6
+            self.ndim = 3
+            self.rotate = False 
 
     def get_min_max_distance(self, new_coord):
 
@@ -57,179 +58,112 @@ class AdTherm:
 
     def coord_generate(self, method, N_values):
 
-        if method == 'gauss':
-            matrix = np.zeros((6,N_values))
-            COM_x, COM_y, COM_z  = self.adsorbate_center_of_mass
-            if self.N_atoms_in_adsorbate > 2:
-                gaussmean = np.array([COM_x, COM_y, COM_z, 0.0, 0.0, 0.0])
-            elif self.N_atoms_in_adsorbate == 2:
-                gaussmean = np.array([COM_x, COM_y, COM_z, 0.0, 0.0])
-            else:
-                gaussmean = np.array([COM_x, COM_y, COM_z])
-            hess = self.rigid_body_hessian
-#            print(LA.eigh(hess))
-            invhess = LA.inv(hess)
-            gausscov = invhess.copy()
-            gaussmat = np.random.multivariate_normal(gaussmean, gausscov, size=N_values, check_valid='warn')
-            for i in range(0, len(gaussmean)):
-                    matrix[i,:] = gaussmat[:,i]
-        
-        if method == 'sobol':
-            matrix=np.zeros((6,N_values))
-            if self.N_atoms_in_adsorbate > 2:
-                sobolmatrix = i4_sobol_generate (6, N_values, 1)
-            elif self.N_atoms_in_adsorbate == 2:
-                sobolmatrix = i4_sobol_generate (5, N_values, 1)
-            elif self.N_atoms_in_adsorbate == 1:
-                sobolmatrix = i4_sobol_generate (3, N_values, 1)
-            for i in range(0,6):
-                if len(sobolmatrix[0,:]) == 6:
-                    matrix[i,:]=sobolmatrix[:,i]
-                elif len(sobolmatrix[0,:]) == 5:
-                    if i<5:
-                        matrix[i,:]=sobolmatrix[:,i]
-                elif len(sobolmatrix[0,:]) == 3:
-                    if i<3:
-                        matrix[i,:]=sobolmatrix[:,i]
-
-        if method == 'random':
-            matrix = np.zeros((6, N_values))
-            for i in range(0, 6):
-                matrix[i,:] = np.random.uniform(0, 1, size = N_values)
-
-        if method == 'hessian':
-            matrix=np.zeros((6,N_values))
-            count=0
-            dh = self.hessian_displacement_size
-            if self.N_atoms_in_adsorbate == 1:
-                ndim = 3
-            elif self.N_atoms_in_adsorbate == 2:
-                ndim = 5
-            else:
-                ndim = 6
-            for i in range(ndim):
-                for disp in [-1,1]:
-                    displacement=[0,0,0,0,0,0]
-                    displacement[i] = disp*dh 
-                    matrix[:,count] = displacement
-                    count += 1
-
-        if method == 'random' or method == 'sobol':
-            dy = matrix[1,:]*self.uc_y/3.0
-            dx = matrix[0,:]*self.uc_x/3.0+dy*np.tan(30*np.pi/180)
-            dz = matrix[2,:]*(self.z_high-self.z_low)+self.z_low
-            alpha = matrix[3,:]*2.0*np.pi - np.pi
-            beta = np.arccos(matrix[4,:]*2.0-1.0) - np.arccos(0.0)
-            gamma = matrix[5,:]*2.0*np.pi - np.pi
-            if self.N_atoms_in_adsorbate < 3:
-                gamma[:] = 0.0
-            if self.N_atoms_in_adsorbate == 1:
-                alpha[:] = 0.0
-                beta[:] = 0.0    
-        elif method == 'gauss':
-            dx = matrix[0,:]
-            dy = matrix[1,:]
-            dz = matrix[2,:]
-            alpha = matrix[3,:]
-            beta = matrix[4,:]
-            gamma = matrix[5,:]
-        elif method == 'hessian':
-            COM_x, COM_y, COM_z  = self.adsorbate_center_of_mass
-            dx = matrix[0,:] + COM_x
-            dy = matrix[1,:] + COM_y
-            dz = matrix[2,:] + COM_z
-            alpha = matrix[3,:]
-            beta = matrix[4,:]
-            gamma = matrix[5,:]
-            if self.N_atoms_in_adsorbate == 1:
-                alpha[:] = 0.0
-                beta[:] = 0.0
-                gamma[:] = 0.0
-            elif self.N_atoms_in_adsorbate == 2:
-                gamma[:] = 0.
-        coord=np.transpose(np.asarray([dx,dy,dz,alpha,beta,gamma]))
-        return coord
-
-    def check_coord(self,coord):
-        
-        traj = Trajectory('coord.traj', 'w')
-        ref = open('coord_list.dat','w')
-        ref_eliminated = open('invalid_coord_list.dat','w')
+        traj = Trajectory(method+'_coord.traj', 'w')
+        name="{}_coord_list.dat".format(str(method))
+        ref = open(name,'w')
         dft_jobs = []
-        number_valid = 0
-        number_invalid = 0
-        conv = 180 / np.pi
-        for i in range(0, len(coord)):
-            atoms=self.atoms.copy()
-            adsorbate=self.adsorbate.copy()
-            if self.rotate:
-                adsorbate.euler_rotate(conv * coord[i,3], conv * coord[i,4],
-                        conv * coord[i,5], center=self.adsorbate_center_of_mass)
-            adsorbate.translate(coord[i,0:3]-self.adsorbate_center_of_mass)
-            valid = True
-            atoms.positions[self.indices]=adsorbate.positions
-            new_coord = atoms.positions
+        Iter = 0
+        while Iter < N_values:
+            displacement = np.zeros(6)
 
-            uc_x = self.uc_x/3.0
-            uc_y = self.uc_y/3.0
-            y_ub = uc_y
-            y_lb = 0.0
-            x_ub = uc_x+coord[i,1]*(1./np.sqrt(3))
-            x_lb = coord[i,1]*(1./np.sqrt(3))
-            z_ub = self.z_high
-            z_lb = self.z_low
-        
-            min_dist,max_dist = self.get_min_max_distance(new_coord)
-            if min_dist < self.min_cutoff or max_dist>self.max_cutoff:
-                valid = False
-            elif coord[i,2] > z_ub or coord[i,2] < z_lb:
-                valid = False
-            elif coord[i,4] > 0.5*np.pi or coord[i,4] < -0.5*np.pi:
-                valid = False
+            if method == 'gauss':
+                gaussmean = np.zeros(self.ndim)
+                gaussmean[0:3] = self.adsorbate_center_of_mass
+                hess = self.rigid_body_hessian
+                gausscov = np.copy(LA.inv(hess))
+                displacement[0:self.ndim]  = np.random.multivariate_normal(gaussmean, gausscov, size=1, check_valid='warn')
+                
+            if method == 'random' or method == 'sobol': 
+                if method == 'sobol':
+                    if self.N_atoms_in_adsorbate > 2:
+                        displacement = i4_sobol_generate(6, 1, Iter+1)[0,:]
+                    elif self.N_atoms_in_adsorbate == 2:
+                        displacement[0:5] = i4_sobol_generate(5, 1, Iter+1)[0,:]
+                    elif self.N_atoms_in_adsorbate == 1:
+                        displacement[0:3] = i4_sobol_generate(3, 1, Iter+1)[0,:]
+                if method == 'random':
+                    displacement[0:self.ndim] = np.random.uniform(0, 1, size = self.ndim)
 
-            if valid==True:
-                while coord[i,1] > y_ub or coord[i,1] < y_lb:
-                    if coord[i,1] > y_ub:
-                        coord[i,1] -= uc_y
-                        coord[i,0] -= uc_y*(1./np.sqrt(3))
-                        new_coord[self.indices,0] -= uc_y*(1./np.sqrt(3))
-                        new_coord[self.indices,1] -= uc_y
-                    elif coord[i,1] < y_lb:
-                        coord[i,1] += uc_y
-                        coord[i,0] += uc_y*(1./np.sqrt(3))
-                        new_coord[self.indices,0] += uc_y*(1./np.sqrt(3))
-                        new_coord[self.indices,1] += uc_y
-                    x_ub = uc_x+coord[i,1]*(1./np.sqrt(3))
-                    x_lb = coord[i,1]*(1./np.sqrt(3))
+                displacement[1] = np.copy(displacement[1]*self.uc_y/3.0)
+                displacement[0] = np.copy(displacement[0]*self.uc_x/3.0+displacement[1]*np.tan(30*np.pi/180))
+                displacement[2] = np.copy(displacement[2]*(self.z_high-self.z_low)+self.z_low)
+                displacement[3] = np.copy(displacement[3]*2.0*np.pi - np.pi)
+                displacement[4] = np.copy(np.arccos(displacement[4]*2.0-1.0) - np.arccos(0.0))
+                displacement[5] = np.copy(displacement[5]*2.0*np.pi - np.pi)
 
-                while (coord[i,0] > x_ub or coord[i,0] < x_lb):
-                    if coord[i,0] > x_ub:
-                        coord[i,0] -= uc_x
-                        new_coord[self.indices,0] -= uc_x
-                    elif coord[i,0] < x_lb:
-                        coord[i,0] += uc_x
-                        new_coord[self.indices,0] += uc_x
+            if method == 'hessian':
+                displacement[int(Iter / 2)] = self.hessian_displacement_size
+                displacement[0:3] += self.adsorbate_center_of_mass
+                self.hessian_displacement_size*=-1
 
-            paramline = "%d\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\n"%(i, coord[i,0], coord[i,1], coord[i,2],  coord[i,3], coord[i,4], coord[i,5])
-            if valid == True: 
+            displacement[self.ndim::] = 0
+            d=displacement
+            paramline = "%d\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\n"%(Iter+1, d[0], d[1], d[2], d[3], d[4], d[5])
+            valid, atoms = self.check_coord(displacement)
+            print(valid)
+            if valid: 
                 ref.write(paramline)
-                number_valid +=1
+                Iter +=1
                 atoms.calc=self.atoms.calc
                 traj.write(atoms)
                 dft_jobs.append(atoms)
-
-
-            if valid == False:
-                ref_eliminated.write(paramline)
-                number_invalid+=1
-
         ref.close()
-        ref_eliminated.close()
-
-        print("Generating %d geometries done"%(len(coord)))
-        print("The number of invalid points is:" + str(number_invalid))
-        print("The number of valid points is: " + str(number_valid))
         return dft_jobs
+
+    def check_coord(self,coord):
+        conv = 180 / np.pi
+        atoms=self.atoms.copy()
+        adsorbate=self.adsorbate.copy()
+        if self.rotate:
+            adsorbate.rotate(conv * coord[3],'x','COM')
+            adsorbate.rotate(conv * coord[4],'y','COM')
+            adsorbate.rotate(conv * coord[5],'z','COM')
+        adsorbate.translate(coord[0:3] - self.adsorbate_center_of_mass)
+        valid = True
+        atoms.positions[self.indices]=adsorbate.positions
+        new_coord = atoms.positions
+
+        uc_x = self.uc_x/3.0
+        uc_y = self.uc_y/3.0
+        y_ub = uc_y
+        y_lb = 0.0
+        x_ub = uc_x+coord[1]*(1./np.sqrt(3))
+        x_lb = coord[1]*(1./np.sqrt(3))
+        z_ub = self.z_high
+        z_lb = self.z_low
+        
+        min_dist,max_dist = self.get_min_max_distance(new_coord)
+        if min_dist < self.min_cutoff or max_dist>self.max_cutoff:
+            valid = False
+        elif coord[2] > z_ub or coord[2] < z_lb:
+            valid = False
+        elif coord[4] > 0.5*np.pi or coord[4] < -0.5*np.pi:
+            valid = False
+
+        if valid==True:
+            while coord[1] > y_ub or coord[1] < y_lb:
+                if coord[1] > y_ub:
+                    coord[1] -= uc_y
+                    coord[0] -= uc_y*(1./np.sqrt(3))
+                    new_coord[self.indices,0] -= uc_y*(1./np.sqrt(3))
+                    new_coord[self.indices,1] -= uc_y
+                elif coord[1] < y_lb:
+                    coord[1] += uc_y
+                    coord[0] += uc_y*(1./np.sqrt(3))
+                    new_coord[self.indices,0] += uc_y*(1./np.sqrt(3))
+                    new_coord[self.indices,1] += uc_y
+                x_ub = uc_x+coord[1]*(1./np.sqrt(3))
+                x_lb = coord[1]*(1./np.sqrt(3))
+
+            while (coord[0] > x_ub or coord[0] < x_lb):
+                if coord[0] > x_ub:
+                    coord[0] -= uc_x
+                    new_coord[self.indices,0] -= uc_x
+                elif coord[0] < x_lb:
+                    coord[0] += uc_x
+                    new_coord[self.indices,0] += uc_x
+
+        return valid, atoms
 
     def calculate_rigid_hessian(self, displacement_list, force_list):
         dh = self.hessian_displacement_size
@@ -239,46 +173,51 @@ class AdTherm:
             ndim = 5
         if len(self.indices) ==1:
             ndim = 3
-        hessian = np.zeros((ndim,ndim))
         f = force_list
         x = displacement_list
         df = np.zeros([ndim,ndim])
         dx = np.zeros([3*len(self.indices),ndim])
-        dx_norm=np.zeros(ndim)
         for i in range(ndim):
-            dx[:,i]=(x[:,2*i]-x[:,2*i+1])
-            dx_norm[i] = LA.norm(np.copy(dx[:,i]))
-            dx[:,i]*=(1/dx_norm[i])
-        f_proj=np.transpose(np.matmul(np.transpose(dx),f))
+            dx[:,i]=x[:, 2*i+1]-x[:, 2*i]
+            dx[:,i]*=(1 / LA.norm(np.copy(dx[:,i])))
+        f_proj = np.matmul(np.transpose(dx),f)
         for i in range(ndim):
-            df[i,:]=(1/dx_norm[i]) * (f_proj[2*i+1,:]-f_proj[2*i,:])
-
-        H = df
-        for i in range(ndim):
-            for j in range(ndim):
-                if i > j:
-                    H[j, i] = H[i, j]
+            df[:,i]=f_proj[:, 2*i]-f_proj[:, 2*i+1]
+        H=(1 / (2 * dh)) * df
         return H
 
-
     def run(self):
-        coord_list=self.coord_generate('hessian', self.N_hessian)
-        dft_list=self.check_coord(coord_list)
+        dft_list=self.coord_generate('hessian', self.N_hessian)
         force_list=np.zeros([3*len(self.indices),self.N_hessian])
         displacement_list=np.zeros([3*len(self.indices),self.N_hessian])
         for i, img in enumerate(dft_list):
             f_atoms=img.get_forces()[self.indices]
-            force_list[:,i]=f_atoms.flat
+            force_list[:,i]=f_atoms.reshape(-1)
             disp_atoms=img.positions[self.indices]
-            displacement_list[:,i]=disp_atoms.flat
+            displacement_list[:,i]=disp_atoms.reshape(-1)
         self.rigid_body_hessian = self.calculate_rigid_hessian(displacement_list,force_list)
         np.savetxt('rigid_hessian.out', self.rigid_body_hessian)
-        print(LA.eig(self.rigid_body_hessian))
-        coord_list=self.coord_generate('gauss', self.N_gauss)
-        dft_list=self.check_coord(coord_list)
 
+        dft_list = self.coord_generate('gauss', self.N_gauss)
+        force_list=np.zeros([3*len(self.indices),self.N_gauss])
+        E_list=np.zeros(self.N_gauss)
+        for i, img in enumerate(dft_list):
+            force_list[:,i] = img.get_forces()[self.indices].reshape(-1)
+            E_list[i] = img.get_potential_energy()
 
+        dft_list = self.coord_generate('sobol', self.N_sobol)
+        force_list=np.zeros([3*len(self.indices),self.N_sobol])
+        E_list=np.zeros(self.N_sobol)
+        for i, img in enumerate(dft_list):
+            force_list[:,i] = img.get_forces()[self.indices].reshape(-1)
+            E_list[i] = img.get_potential_energy()
 
+        dft_list = self.coord_generate('random', self.N_random)
+        force_list=np.zeros([3*len(self.indices),self.N_random])
+        E_list=np.zeros(self.N_random)
+        for i, img in enumerate(dft_list):
+            force_list[:,i] = img.get_forces()[self.indices].reshape(-1)
+            E_list[i] = img.get_potential_energy()
 
 
 
