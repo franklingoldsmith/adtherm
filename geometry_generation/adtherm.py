@@ -8,23 +8,26 @@ import numpy.linalg as LA
 import copy
 from ase.io import read, write
 from ase.io.trajectory import Trajectory
+from ase.optimize import BFGS
+from ase.constraints import FixExternals
 #########################
 
 
 class AdTherm:
 
-    def __init__(self, atoms, indices, n_gauss=5000, n_sobol=200, n_random=200, relax_internals=False, z_below=1, z_above=5):
+    def __init__(self, atoms, indices, calc, n_gauss=None, n_sobol=None, n_random=None, relax_internals=False, z_below=1, z_above=5):
         self.atoms = atoms
-        self.indices=indices
+        self.indices = indices
+        self.calc = calc
         self.adsorbate = self.atoms[indices].copy()
         self.N_atoms_in_adsorbate = len(self.adsorbate)
         self.N_gauss = n_gauss
         self.N_sobol = n_sobol
         self.N_random = n_random
+        self.relax_internals = relax_internals
         self.uc_x = atoms.get_cell_lengths_and_angles()[0]
         self.uc_y = atoms.get_cell_lengths_and_angles()[1]
         self.adsorbate_center_of_mass=self.adsorbate.get_center_of_mass()
-        self.adsorbate_mass=np.sum(self.adsorbate.get_masses())
         self.z_low=-z_below+np.min(self.adsorbate.positions[:,2])
         self.z_high=z_above+np.min(self.adsorbate.positions[:,2])
         self.min_cutoff = 0.5
@@ -58,8 +61,8 @@ class AdTherm:
 
     def coord_generate(self, method, N_values):
 
-        traj = Trajectory(method+'_coord.traj', 'w')
-        name="{}_coord_list.dat".format(str(method))
+        traj = Trajectory(method+'_set.traj', 'w')
+        name="{}_x_train.dat".format(str(method))
         ref = open(name,'w')
         dft_jobs = []
         Iter = 0
@@ -98,13 +101,13 @@ class AdTherm:
 
             displacement[self.ndim::] = 0
             d=displacement
-            paramline = "%d\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\n"%(Iter+1, d[0], d[1], d[2], d[3], d[4], d[5])
+            paramline = "%.6F\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\n"%(d[0], d[1], d[2], d[3], d[4], d[5])
             valid, atoms = self.check_coord(displacement)
             print(valid)
             if valid: 
                 ref.write(paramline)
                 Iter +=1
-                atoms.calc=self.atoms.calc
+                atoms.calc=self.calc
                 traj.write(atoms)
                 dft_jobs.append(atoms)
         ref.close()
@@ -112,12 +115,15 @@ class AdTherm:
 
     def check_coord(self,coord):
         conv = 180 / np.pi
+        pa=np.transpose(self.adsorbate.get_moments_of_inertia(vectors=True)[1])
         atoms=self.atoms.copy()
         adsorbate=self.adsorbate.copy()
+        adsorbate.positions=np.copy(np.transpose(np.matmul(pa,np.transpose(adsorbate.positions))))
         if self.rotate:
             adsorbate.rotate(conv * coord[3],'x','COM')
             adsorbate.rotate(conv * coord[4],'y','COM')
             adsorbate.rotate(conv * coord[5],'z','COM')
+        adsorbate.positions=np.copy(np.transpose(np.matmul(LA.inv(pa),np.transpose(adsorbate.positions))))
         adsorbate.translate(coord[0:3] - self.adsorbate_center_of_mass)
         valid = True
         atoms.positions[self.indices]=adsorbate.positions
@@ -167,58 +173,84 @@ class AdTherm:
 
     def calculate_rigid_hessian(self, displacement_list, force_list):
         dh = self.hessian_displacement_size
-        if len(self.indices) > 2:
-            ndim = 6
-        if len(self.indices) == 2:
-            ndim = 5
-        if len(self.indices) ==1:
-            ndim = 3
         f = force_list
         x = displacement_list
-        df = np.zeros([ndim,ndim])
-        dx = np.zeros([3*len(self.indices),ndim])
-        for i in range(ndim):
+        df = np.zeros([self.ndim,self.ndim])
+        dx = np.zeros([3*len(self.indices),self.ndim])
+        for i in range(self.ndim):
             dx[:,i]=x[:, 2*i+1]-x[:, 2*i]
             dx[:,i]*=(1 / LA.norm(np.copy(dx[:,i])))
         f_proj = np.matmul(np.transpose(dx),f)
-        for i in range(ndim):
+        for i in range(self.ndim):
             df[:,i]=f_proj[:, 2*i]-f_proj[:, 2*i+1]
         H=(1 / (2 * dh)) * df
         return H
 
     def run(self):
+
         dft_list=self.coord_generate('hessian', self.N_hessian)
         force_list=np.zeros([3*len(self.indices),self.N_hessian])
         displacement_list=np.zeros([3*len(self.indices),self.N_hessian])
+        E_list=np.zeros(self.N_hessian)
+        y_train = open('hessian_y_train.dat','w')
         for i, img in enumerate(dft_list):
             f_atoms=img.get_forces()[self.indices]
             force_list[:,i]=f_atoms.reshape(-1)
+            E_list[i] = img.get_potential_energy()
+            y_train.write(str(E_list[i]) + "\n")
             disp_atoms=img.positions[self.indices]
             displacement_list[:,i]=disp_atoms.reshape(-1)
+        y_train.close()
         self.rigid_body_hessian = self.calculate_rigid_hessian(displacement_list,force_list)
         np.savetxt('rigid_hessian.out', self.rigid_body_hessian)
+        print(LA.eig(self.rigid_body_hessian))
 
-        dft_list = self.coord_generate('gauss', self.N_gauss)
-        force_list=np.zeros([3*len(self.indices),self.N_gauss])
-        E_list=np.zeros(self.N_gauss)
-        for i, img in enumerate(dft_list):
-            force_list[:,i] = img.get_forces()[self.indices].reshape(-1)
-            E_list[i] = img.get_potential_energy()
+        if self.N_gauss:
+            dft_list = self.coord_generate('gauss', self.N_gauss)
+            force_list=np.zeros([3*len(self.indices),self.N_gauss])
+            E_list=np.zeros(self.N_gauss)
+            y_train = open('gauss_y_train.dat','w')
+            for i, img in enumerate(dft_list):
+                if self.relax_internals:
+                    c = FixExternals(img, self.indices)
+                    img.set_constraint(c)
+                    dyn = BFGS(img)
+                    dyn.run(fmax=0.05)
+                force_list[:,i] = img.get_forces()[self.indices].reshape(-1)
+                E_list[i] = img.get_potential_energy()
+                y_train.write(str(E_list[i]) + '\n')
+            y_train.close()
 
-        dft_list = self.coord_generate('sobol', self.N_sobol)
-        force_list=np.zeros([3*len(self.indices),self.N_sobol])
-        E_list=np.zeros(self.N_sobol)
-        for i, img in enumerate(dft_list):
-            force_list[:,i] = img.get_forces()[self.indices].reshape(-1)
-            E_list[i] = img.get_potential_energy()
+        if self.N_sobol:
+            dft_list = self.coord_generate('sobol', self.N_sobol)
+            force_list=np.zeros([3*len(self.indices),self.N_sobol])
+            E_list=np.zeros(self.N_sobol)
+            y_train = open('sobol_y_train.dat','w')
+            for i, img in enumerate(dft_list):
+                if self.relax_internals:
+                    c = FixExternals(img, self.indices)
+                    img.set_constraint(c)
+                    dyn = BFGS(img)
+                    dyn.run(fmax=0.05)
+                force_list[:,i] = img.get_forces()[self.indices].reshape(-1)
+                E_list[i] = img.get_potential_energy()
+                y_train.write(str(E_list[i]) + '\n')
+            y_train.close()
 
-        dft_list = self.coord_generate('random', self.N_random)
-        force_list=np.zeros([3*len(self.indices),self.N_random])
-        E_list=np.zeros(self.N_random)
-        for i, img in enumerate(dft_list):
-            force_list[:,i] = img.get_forces()[self.indices].reshape(-1)
-            E_list[i] = img.get_potential_energy()
-
-
+        if self.N_random:
+            dft_list = self.coord_generate('random', self.N_random)
+            force_list=np.zeros([3*len(self.indices),self.N_random])
+            E_list=np.zeros(self.N_random)
+            y_train = open('random_y_train.dat','w')
+            for i, img in enumerate(dft_list):
+                if self.relax_internals:
+                    c = FixExternals(img, self.indices)
+                    img.set_constraint(c)
+                    dyn = BFGS(img)
+                    dyn.run(fmax=0.05)
+                force_list[:,i] = img.get_forces()[self.indices].reshape(-1)
+                E_list[i] = img.get_potential_energy()
+                y_train.write(str(E_list[i]) + '\n')
+            y_train.close()
 
 
