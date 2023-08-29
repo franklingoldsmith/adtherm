@@ -32,7 +32,7 @@ class AdTherm:
         self.z_high=z_above+np.min(self.adsorbate.positions[:,2])
         self.min_cutoff = 0.5
         self.max_cutoff = 100.0
-        self.hessian_displacement_size = 1e-2
+        self.hessian_displacement_size = 1e-4
         self.rotate = True
         self.N_hessian = 12
         self.ndim = 6
@@ -115,15 +115,15 @@ class AdTherm:
 
     def check_coord(self,coord):
         conv = 180 / np.pi
-        pa=np.transpose(self.adsorbate.get_moments_of_inertia(vectors=True)[1])
+#        pa=np.transpose(self.adsorbate.get_moments_of_inertia(vectors=True)[1])
         atoms=self.atoms.copy()
         adsorbate=self.adsorbate.copy()
-        adsorbate.positions=np.copy(np.transpose(np.matmul(pa,np.transpose(adsorbate.positions))))
+#        adsorbate.positions=np.copy(np.transpose(np.matmul(pa,np.transpose(adsorbate.positions))))
         if self.rotate:
             adsorbate.rotate(conv * coord[3],'x','COM')
             adsorbate.rotate(conv * coord[4],'y','COM')
             adsorbate.rotate(conv * coord[5],'z','COM')
-        adsorbate.positions=np.copy(np.transpose(np.matmul(LA.inv(pa),np.transpose(adsorbate.positions))))
+#        adsorbate.positions=np.copy(np.transpose(np.matmul(LA.inv(pa),np.transpose(adsorbate.positions))))
         adsorbate.translate(coord[0:3] - self.adsorbate_center_of_mass)
         valid = True
         atoms.positions[self.indices]=adsorbate.positions
@@ -175,16 +175,34 @@ class AdTherm:
         dh = self.hessian_displacement_size
         f = force_list
         x = displacement_list
-        df = np.zeros([self.ndim,self.ndim])
+        B = self.get_external_basis(self.atoms)
+        f_sub = np.matmul(np.transpose(B),f)
+        df_sub = np.zeros([self.ndim,self.ndim])
         dx = np.zeros([3*len(self.indices),self.ndim])
         for i in range(self.ndim):
             dx[:,i]=x[:, 2*i+1]-x[:, 2*i]
-            dx[:,i]*=(1 / LA.norm(np.copy(dx[:,i])))
-        f_proj = np.matmul(np.transpose(dx),f)
-        for i in range(self.ndim):
-            df[:,i]=f_proj[:, 2*i]-f_proj[:, 2*i+1]
-        H=(1 / (2 * dh)) * df
+            df_sub[:,i]=f_sub[:, 2*i]-f_sub[:, 2*i+1]
+        dx_sub = np.matmul(np.transpose(B),dx)
+        H=np.matmul(LA.inv(dx_sub),df_sub)
+        print(np.matmul(np.transpose(B),B))
+
         return H
+
+    def get_external_basis(self,atoms):
+        
+        B=np.zeros([3*len(self.indices),6])
+        ads_pos=atoms.positions[self.indices]
+        for i in range(len(self.indices)):
+            B[3*i,0]=1
+            B[3*i+1,1]=1
+            B[3*i+2,2]=1
+            B[3*i:3*i+3,3]=np.cross(ads_pos[i,:],np.asarray([1,0,0]))
+            B[3*i:3*i+3,4]=np.cross(ads_pos[i,:],np.asarray([0,1,0]))
+            B[3*i:3*i+3,5]=np.cross(ads_pos[i,:],np.asarray([0,0,1]))
+        for i in range(6):
+            B[:,i] *= 1 / LA.norm(np.copy(B[:,i]))
+        return B
+
 
     def run(self):
 
