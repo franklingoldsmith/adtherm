@@ -239,8 +239,10 @@ class AdTherm:
         return xi, y
 
     def run(self):
-        booty = open('bootstrap_y_train.dat', 'w')
-        bootx = open('bootstrap_x_train.dat', 'w')
+
+        if self.bootstrap:
+            booty = open('bootstrap_y_train.dat', 'w')
+            bootx = open('bootstrap_x_train.dat', 'w')
         dft_list, coord = self.coord_generate('hessian', self.N_hessian)
         force_list = np.zeros([3 * len(self.indices), self.N_hessian])
         displacement_list = np.zeros([3 * len(self.indices), self.N_hessian])
@@ -273,12 +275,12 @@ class AdTherm:
                 y_train.write(str(E) + '\n')
                 if self.bootstrap:
                     xi, y = self.bootstrap_points(force, E, img, coords[i, :])
-                for j in range(2 * self.ndim):
-                    x = xi[j, :]
-                    paramline = "%.6F\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\n" % (
-                            x[0], x[1], x[2], x[3], x[4], x[5])
-                    bootx.write(paramline)
-                    booty.write(str(y[j]) + '\n')
+                    for j in range(2 * self.ndim):
+                        x = xi[j, :]
+                        paramline = "%.6F\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\n" % (
+                                x[0], x[1], x[2], x[3], x[4], x[5])
+                        bootx.write(paramline)
+                        booty.write(str(y[j]) + '\n')
             y_train.close()
 
         if self.N_sobol:
@@ -295,12 +297,12 @@ class AdTherm:
                 y_train.write(str(E) + '\n')
                 if self.bootstrap:
                     xi, y = self.bootstrap_points(force, E, img, coords[i, :])
-                for j in range(2 * self.ndim):
-                    x = xi[j, :]
-                    paramline = "%.6F\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\n" % (
-                            x[0], x[1], x[2], x[3], x[4], x[5])
-                    bootx.write(paramline)
-                    booty.write(str(y[j]) + '\n')
+                    for j in range(2 * self.ndim):
+                        x = xi[j, :]
+                        paramline = "%.6F\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\n" % (
+                                x[0], x[1], x[2], x[3], x[4], x[5])
+                        bootx.write(paramline)
+                        booty.write(str(y[j]) + '\n')
             y_train.close()
 
         if self.N_random:
@@ -317,13 +319,13 @@ class AdTherm:
                 y_train.write(str(E) + '\n')
                 if self.bootstrap:
                     xi, y = self.bootstrap_points(force, E, img, coords[i, :])
-                for j in range(2 * self.ndim):
-                    x = xi[j, :]
-                    paramline = "%.6F\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\n" % (
-                            x[0], x[1], x[2], x[3], x[4], x[5])
-                    bootx.write(paramline)
-                    booty.write(str(y[j]) + '\n')
+                    for j in range(2 * self.ndim):
+                        x = xi[j, :]
+                        paramline = "%.6F\t%.6F\t%.6F\t%.6F\t%.6F\t%.6F\n" % (
+                                x[0], x[1], x[2], x[3], x[4], x[5])
+                        bootx.write(paramline)
+                        booty.write(str(y[j]) + '\n')
             y_train.close()
-
-        bootx.close()
-        booty.close()
+        if self.bootstrap:
+            bootx.close()
+            booty.close()
